@@ -20,11 +20,8 @@ slot_config.cmd = GPIO_NUM_35;
 slot_config.d0  = GPIO_NUM_37;
 ```
 
-Connection diagram available in:
-
-```
-./assets/schema.png
-```
+Example connection for esp32-s3
+![Schemat bazy danych](./assets/schema.png)
 
 ## Setup and build
 
@@ -49,9 +46,7 @@ pyinstaller --onefile --add-data "cursor.cur:." --add-data "pointer.cur:." --add
 
 Screen recording demonstrating device operation (cursor replacement):
 
-```
-./assets/example.mp4
-```
+[Recording example](./assets/test.mp4)
 
 ## Final notes
 
